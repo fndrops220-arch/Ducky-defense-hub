@@ -1,5 +1,5 @@
--- Ducky Auto Defense v2.0 - ULTRA PREMIUM EDITION
--- Automatic base protection system with real-time player tracking
+-- Ducky Auto Defense v3.0 - ULTRA PREMIUM EDITION
+-- Automatic base protection with ESP detection & admin integration
 -- Created by Ducky Team - discord.gg/duGj8hjB
 
 local Players = game:GetService("Players")
@@ -9,9 +9,9 @@ local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 
-print("🛡️ Ducky Auto Defense v2.0 loading...")
+print("🛡️ Ducky Auto Defense v3.0 loading...")
 
--- Premium Color Palette (matching main hub)
+-- Premium Color Palette
 local COLORS = {
 	PRIMARY = Color3.fromRGB(99, 102, 241),
 	PRIMARY_LIGHT = Color3.fromRGB(129, 140, 248),
@@ -46,16 +46,38 @@ local ANIM = {
 	ELASTIC = TweenInfo.new(0.7, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out),
 }
 
--- Defense Settings (ALL DEFAULT TO FALSE)
-local defenseEnabled = false
-local defenseRange = 50
-local useAdminCommands = false
-local notifyOnIntruder = false
-local defenseCommands = {"balloon", "ragdoll", "jail", "jumpscare", "inverse"}
+-- Defense Settings
+local Settings = {
+	-- Main toggles
+	DefenseEnabled = false,
+	AutoAdminPanel = false,
+	NotifyOnIntruder = false,
+	ShowESP = true,
+	
+	-- Detection settings
+	DefenseRange = 50,
+	DetectionDelay = 0.5,
+	CooldownTime = 15,
+	
+	-- Admin commands
+	UseAdminCommands = false,
+	AdminCommands = {"balloon", "ragdoll", "jail", "jumpscare", "inverse"},
+	CommandDelay = 0.2,
+	
+	-- ESP settings
+	ESPColor = COLORS.DANGER,
+	ESPThickness = 2,
+	ShowDistance = true,
+	ShowName = true,
+}
+
 local detectionConnections = {}
 local intruderCooldowns = {}
 local playerCards = {}
+local playerESP = {}
 local baseCenter = nil
+local baseBounds = nil
+local currentTab = "Defense"
 
 -- Create UI
 local gui = Instance.new("ScreenGui")
@@ -75,10 +97,10 @@ else
 	return
 end
 
--- Main Defense Panel (LARGER AND BETTER)
+-- Main Defense Panel
 local defensePanel = Instance.new("Frame", gui)
-defensePanel.Size = UDim2.fromOffset(480, 680)
-defensePanel.Position = UDim2.new(0.5, -240, 0.5, -340)
+defensePanel.Size = UDim2.fromOffset(520, 720)
+defensePanel.Position = UDim2.new(0.5, -260, 0.5, -360)
 defensePanel.BackgroundColor3 = COLORS.BG_GLASS
 defensePanel.BackgroundTransparency = 0.08
 defensePanel.BorderSizePixel = 0
@@ -93,27 +115,22 @@ panelStroke.Color = COLORS.DANGER
 panelStroke.Thickness = 3
 panelStroke.Transparency = 0.2
 
--- Multi-layer glass effect
+-- Glass effect layers
 local glassLayer1 = Instance.new("Frame", defensePanel)
 glassLayer1.Size = UDim2.fromScale(1, 1)
 glassLayer1.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 glassLayer1.BackgroundTransparency = 0.95
 glassLayer1.BorderSizePixel = 0
 glassLayer1.ZIndex = 1
-
-local layer1Corner = Instance.new("UICorner", glassLayer1)
-layer1Corner.CornerRadius = UDim.new(0, 28)
+Instance.new("UICorner", glassLayer1).CornerRadius = UDim.new(0, 28)
 
 local glassLayer2 = Instance.new("Frame", defensePanel)
 glassLayer2.Size = UDim2.fromScale(1, 0.25)
-glassLayer2.Position = UDim2.fromScale(0, 0)
 glassLayer2.BackgroundColor3 = COLORS.DANGER
 glassLayer2.BackgroundTransparency = 0.9
 glassLayer2.BorderSizePixel = 0
 glassLayer2.ZIndex = 1
-
-local layer2Corner = Instance.new("UICorner", glassLayer2)
-layer2Corner.CornerRadius = UDim.new(0, 28)
+Instance.new("UICorner", glassLayer2).CornerRadius = UDim.new(0, 28)
 
 local layer2Gradient = Instance.new("UIGradient", glassLayer2)
 layer2Gradient.Color = ColorSequence.new({
@@ -128,7 +145,7 @@ layer2Gradient.Transparency = NumberSequence.new({
 })
 
 -- Animated gradient
-spawn(function()
+task.spawn(function()
 	while gui.Parent do
 		for i = 45, 405, 0.5 do
 			if not gui.Parent then break end
@@ -150,70 +167,6 @@ panelGlow.ImageTransparency = 0.6
 panelGlow.ScaleType = Enum.ScaleType.Slice
 panelGlow.SliceCenter = Rect.new(24, 24, 276, 276)
 panelGlow.ZIndex = 0
-
--- Animated border glow
-spawn(function()
-	while gui.Parent do
-		TweenService:Create(panelStroke, TweenInfo.new(2.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-			Color = COLORS.WARNING,
-			Transparency = 0.1
-		}):Play()
-		TweenService:Create(panelGlow, TweenInfo.new(2.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-			ImageColor3 = COLORS.WARNING,
-			ImageTransparency = 0.4
-		}):Play()
-		task.wait(2.5)
-		if not gui.Parent then break end
-		TweenService:Create(panelStroke, TweenInfo.new(2.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-			Color = COLORS.DANGER,
-			Transparency = 0.2
-		}):Play()
-		TweenService:Create(panelGlow, TweenInfo.new(2.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-			ImageColor3 = COLORS.DANGER,
-			ImageTransparency = 0.6
-		}):Play()
-		task.wait(2.5)
-	end
-end)
-
--- Floating particles
-local particlesContainer = Instance.new("Frame", defensePanel)
-particlesContainer.Size = UDim2.fromScale(1, 1)
-particlesContainer.BackgroundTransparency = 1
-particlesContainer.ZIndex = 2
-
-for i = 1, 15 do
-	local particle = Instance.new("Frame", particlesContainer)
-	local size = math.random(2, 8)
-	particle.Size = UDim2.fromOffset(size, size)
-	particle.Position = UDim2.new(math.random(), 0, math.random(), 0)
-	particle.BackgroundColor3 = i % 2 == 0 and COLORS.DANGER or COLORS.WARNING
-	particle.BackgroundTransparency = math.random(88, 96) / 100
-	particle.BorderSizePixel = 0
-	
-	local particleCorner = Instance.new("UICorner", particle)
-	particleCorner.CornerRadius = UDim.new(1, 0)
-	
-	spawn(function()
-		while gui.Parent and particle.Parent do
-			local duration = math.random(30, 50)
-			TweenService:Create(particle, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
-				Position = UDim2.new(math.random(), 0, math.random(), 0)
-			}):Play()
-			task.wait(duration)
-		end
-	end)
-	
-	spawn(function()
-		while gui.Parent and particle.Parent do
-			local duration = math.random(3, 6)
-			TweenService:Create(particle, TweenInfo.new(duration, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-				BackgroundTransparency = math.random(70, 80) / 100
-			}):Play()
-			task.wait(duration)
-		end
-	end)
-end
 
 -- Draggable functionality
 local dragging, dragInput, mousePos, framePos
@@ -244,16 +197,14 @@ UserInputService.InputChanged:Connect(function(input)
 	end
 end)
 
--- Enhanced Header
+-- Header
 local header = Instance.new("Frame", defensePanel)
-header.Size = UDim2.fromOffset(480, 120)
+header.Size = UDim2.fromOffset(520, 120)
 header.BackgroundColor3 = COLORS.BG_CARD
 header.BackgroundTransparency = 0.25
 header.BorderSizePixel = 0
 header.ZIndex = 3
-
-local headerCorner = Instance.new("UICorner", header)
-headerCorner.CornerRadius = UDim.new(0, 28)
+Instance.new("UICorner", header).CornerRadius = UDim.new(0, 28)
 
 -- Header gradient
 local headerGrad = Instance.new("Frame", header)
@@ -262,10 +213,8 @@ headerGrad.BackgroundColor3 = COLORS.DANGER
 headerGrad.BackgroundTransparency = 0.86
 headerGrad.BorderSizePixel = 0
 headerGrad.ZIndex = 3
-
 local headerGradCorner = Instance.new("UICorner", headerGrad)
 headerGradCorner.CornerRadius = UDim.new(0, 28)
-
 local headerGradGrad = Instance.new("UIGradient", headerGrad)
 headerGradGrad.Transparency = NumberSequence.new({
 	NumberSequenceKeypoint.new(0, 0),
@@ -281,9 +230,7 @@ shieldContainer.BackgroundColor3 = COLORS.DANGER
 shieldContainer.BackgroundTransparency = 0.85
 shieldContainer.BorderSizePixel = 0
 shieldContainer.ZIndex = 4
-
-local shieldCorner = Instance.new("UICorner", shieldContainer)
-shieldCorner.CornerRadius = UDim.new(0, 18)
+Instance.new("UICorner", shieldContainer).CornerRadius = UDim.new(0, 18)
 
 local shieldStroke = Instance.new("UIStroke", shieldContainer)
 shieldStroke.Color = COLORS.DANGER
@@ -298,53 +245,22 @@ shieldIcon.Font = Enum.Font.GothamBold
 shieldIcon.TextSize = 52
 shieldIcon.ZIndex = 5
 
--- Pulsing shield animation
-spawn(function()
-	while gui.Parent do
-		TweenService:Create(shieldIcon, TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-			TextSize = 56,
-			Rotation = 8
-		}):Play()
-		TweenService:Create(shieldStroke, TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-			Transparency = 0.2
-		}):Play()
-		task.wait(2)
-		if not gui.Parent then break end
-		TweenService:Create(shieldIcon, TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-			TextSize = 52,
-			Rotation = -8
-		}):Play()
-		TweenService:Create(shieldStroke, TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-			Transparency = 0.4
-		}):Play()
-		task.wait(2)
-	end
-end)
-
 local titleLabel = Instance.new("TextLabel", header)
 titleLabel.Size = UDim2.fromOffset(330, 36)
 titleLabel.Position = UDim2.fromOffset(110, 22)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "AUTO DEFENSE"
+titleLabel.Text = "AUTO DEFENSE v3.0"
 titleLabel.Font = Enum.Font.GothamBold
-titleLabel.TextSize = 26
+titleLabel.TextSize = 24
 titleLabel.TextColor3 = COLORS.TEXT
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 titleLabel.ZIndex = 4
-
--- Title gradient
-local titleGradient = Instance.new("UIGradient", titleLabel)
-titleGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, COLORS.TEXT),
-	ColorSequenceKeypoint.new(1, COLORS.DANGER)
-})
-titleGradient.Rotation = 90
 
 local subtitle = Instance.new("TextLabel", header)
 subtitle.Size = UDim2.fromOffset(330, 22)
 subtitle.Position = UDim2.fromOffset(110, 62)
 subtitle.BackgroundTransparency = 1
-subtitle.Text = "Real-Time Player Tracking & Protection"
+subtitle.Text = "ESP Detection & Auto Admin Panel"
 subtitle.Font = Enum.Font.Gotham
 subtitle.TextSize = 13
 subtitle.TextColor3 = COLORS.TEXT_MUTED
@@ -359,9 +275,7 @@ statusBadge.BackgroundColor3 = COLORS.DANGER
 statusBadge.BackgroundTransparency = 0.12
 statusBadge.BorderSizePixel = 0
 statusBadge.ZIndex = 4
-
-local statusCorner = Instance.new("UICorner", statusBadge)
-statusCorner.CornerRadius = UDim.new(0, 12)
+Instance.new("UICorner", statusBadge).CornerRadius = UDim.new(0, 12)
 
 local statusStroke = Instance.new("UIStroke", statusBadge)
 statusStroke.Color = COLORS.DANGER
@@ -377,36 +291,10 @@ statusText.TextSize = 13
 statusText.TextColor3 = COLORS.TEXT
 statusText.ZIndex = 5
 
--- Player count badge
-local playerCountBadge = Instance.new("Frame", header)
-playerCountBadge.Size = UDim2.fromOffset(100, 34)
-playerCountBadge.Position = UDim2.fromOffset(220, 88)
-playerCountBadge.BackgroundColor3 = COLORS.PRIMARY
-playerCountBadge.BackgroundTransparency = 0.12
-playerCountBadge.BorderSizePixel = 0
-playerCountBadge.ZIndex = 4
-
-local countCorner = Instance.new("UICorner", playerCountBadge)
-countCorner.CornerRadius = UDim.new(0, 12)
-
-local countStroke = Instance.new("UIStroke", playerCountBadge)
-countStroke.Color = COLORS.PRIMARY_LIGHT
-countStroke.Thickness = 2
-countStroke.Transparency = 0.3
-
-local playerCountText = Instance.new("TextLabel", playerCountBadge)
-playerCountText.Size = UDim2.fromScale(1, 1)
-playerCountText.BackgroundTransparency = 1
-playerCountText.Text = "0 Players"
-playerCountText.Font = Enum.Font.GothamBold
-playerCountText.TextSize = 13
-playerCountText.TextColor3 = COLORS.TEXT
-playerCountText.ZIndex = 5
-
 -- Close button
 local closeBtn = Instance.new("TextButton", header)
 closeBtn.Size = UDim2.fromOffset(45, 45)
-closeBtn.Position = UDim2.fromOffset(420, 15)
+closeBtn.Position = UDim2.fromOffset(460, 15)
 closeBtn.BackgroundColor3 = COLORS.DANGER
 closeBtn.BackgroundTransparency = 0.75
 closeBtn.Text = "✕"
@@ -416,284 +304,343 @@ closeBtn.TextColor3 = COLORS.TEXT
 closeBtn.BorderSizePixel = 0
 closeBtn.AutoButtonColor = false
 closeBtn.ZIndex = 4
-
-local closeBtnCorner = Instance.new("UICorner", closeBtn)
-closeBtnCorner.CornerRadius = UDim.new(0, 14)
-
-local closeBtnStroke = Instance.new("UIStroke", closeBtn)
-closeBtnStroke.Color = COLORS.DANGER
-closeBtnStroke.Thickness = 2
-closeBtnStroke.Transparency = 0.4
-
-closeBtn.MouseEnter:Connect(function()
-	TweenService:Create(closeBtn, ANIM.SMOOTH, {
-		BackgroundTransparency = 0, 
-		Rotation = 90,
-		Size = UDim2.fromOffset(50, 50)
-	}):Play()
-	TweenService:Create(closeBtnStroke, ANIM.SMOOTH, {Transparency = 0.2}):Play()
-end)
-
-closeBtn.MouseLeave:Connect(function()
-	TweenService:Create(closeBtn, ANIM.SMOOTH, {
-		BackgroundTransparency = 0.75, 
-		Rotation = 0,
-		Size = UDim2.fromOffset(45, 45)
-	}):Play()
-	TweenService:Create(closeBtnStroke, ANIM.SMOOTH, {Transparency = 0.4}):Play()
-end)
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 14)
 
 closeBtn.MouseButton1Click:Connect(function()
-	-- Stop all defense
-	defenseEnabled = false
+	Settings.DefenseEnabled = false
 	for _, conn in pairs(detectionConnections) do
 		if conn and typeof(conn) == "RBXScriptConnection" then
 			conn:Disconnect()
 		end
 	end
-	
-	TweenService:Create(defensePanel, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-		Size = UDim2.fromOffset(0, 0),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		BackgroundTransparency = 1
-	}):Play()
-	
-	for _, child in pairs(defensePanel:GetDescendants()) do
-		pcall(function()
-			if child:IsA("TextLabel") or child:IsA("TextButton") then
-				TweenService:Create(child, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
-			elseif child:IsA("Frame") or child:IsA("ImageLabel") or child:IsA("ImageButton") then
-				TweenService:Create(child, TweenInfo.new(0.5), {BackgroundTransparency = 1, ImageTransparency = 1}):Play()
-			elseif child:IsA("UIStroke") then
-				TweenService:Create(child, TweenInfo.new(0.5), {Transparency = 1}):Play()
-			end
-		end)
+	for _, espData in pairs(playerESP) do
+		if espData.box then espData.box:Destroy() end
+		if espData.connection then espData.connection:Disconnect() end
 	end
-	
-	task.wait(0.5)
 	gui:Destroy()
 	print("👋 Ducky Auto Defense closed")
 end)
 
--- Divider
-local divider = Instance.new("Frame", defensePanel)
-divider.Size = UDim2.fromOffset(450, 2)
-divider.Position = UDim2.fromOffset(15, 130)
-divider.BackgroundColor3 = COLORS.DANGER
-divider.BackgroundTransparency = 0.4
-divider.BorderSizePixel = 0
-divider.ZIndex = 3
+-- Tab buttons container
+local tabsContainer = Instance.new("Frame", defensePanel)
+tabsContainer.Size = UDim2.fromOffset(490, 50)
+tabsContainer.Position = UDim2.fromOffset(15, 132)
+tabsContainer.BackgroundTransparency = 1
+tabsContainer.ZIndex = 3
 
-local dividerCorner = Instance.new("UICorner", divider)
-dividerCorner.CornerRadius = UDim.new(1, 0)
+local tabsLayout = Instance.new("UIListLayout", tabsContainer)
+tabsLayout.FillDirection = Enum.FillDirection.Horizontal
+tabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tabsLayout.Padding = UDim.new(0, 10)
 
-local dividerGradient = Instance.new("UIGradient", divider)
-dividerGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, COLORS.DANGER),
-	ColorSequenceKeypoint.new(0.5, COLORS.WARNING),
-	ColorSequenceKeypoint.new(1, COLORS.DANGER)
-})
-dividerGradient.Transparency = NumberSequence.new({
-	NumberSequenceKeypoint.new(0, 1),
-	NumberSequenceKeypoint.new(0.5, 0),
-	NumberSequenceKeypoint.new(1, 1)
-})
+-- Content container
+local contentContainer = Instance.new("Frame", defensePanel)
+contentContainer.Size = UDim2.fromOffset(490, 520)
+contentContainer.Position = UDim2.fromOffset(15, 192)
+contentContainer.BackgroundTransparency = 1
+contentContainer.ZIndex = 3
 
--- Controls Section
-local controlsSection = Instance.new("Frame", defensePanel)
-controlsSection.Size = UDim2.fromOffset(450, 110)
-controlsSection.Position = UDim2.fromOffset(15, 142)
-controlsSection.BackgroundColor3 = COLORS.BG_CARD
-controlsSection.BackgroundTransparency = 0.3
-controlsSection.BorderSizePixel = 0
-controlsSection.ZIndex = 3
-
-local controlsCorner = Instance.new("UICorner", controlsSection)
-controlsCorner.CornerRadius = UDim.new(0, 18)
-
-local controlsStroke = Instance.new("UIStroke", controlsSection)
-controlsStroke.Color = COLORS.PRIMARY
-controlsStroke.Thickness = 1.5
-controlsStroke.Transparency = 0.6
-
--- Controls Layout
-local controlsLayout = Instance.new("UIListLayout", controlsSection)
-controlsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-controlsLayout.Padding = UDim.new(0, 8)
-controlsLayout.FillDirection = Enum.FillDirection.Horizontal
-
-local controlsPadding = Instance.new("UIPadding", controlsSection)
-controlsPadding.PaddingTop = UDim.new(0, 12)
-controlsPadding.PaddingLeft = UDim.new(0, 12)
-controlsPadding.PaddingRight = UDim.new(0, 12)
-controlsPadding.PaddingBottom = UDim.new(0, 12)
-
--- Helper: Create compact toggle
-local function createCompactToggle(text, icon, defaultState)
-	local container = Instance.new("Frame", controlsSection)
-	container.Size = UDim2.fromOffset(138, 86)
-	container.BackgroundColor3 = COLORS.BG_GLASS
-	container.BackgroundTransparency = 0.4
-	container.BorderSizePixel = 0
+-- Helper: Create tab button
+local function createTabButton(name, icon, order)
+	local btn = Instance.new("TextButton", tabsContainer)
+	btn.Name = name .. "Tab"
+	btn.Size = UDim2.fromOffset(150, 50)
+	btn.BackgroundColor3 = COLORS.BG_CARD
+	btn.BackgroundTransparency = 0.3
+	btn.BorderSizePixel = 0
+	btn.AutoButtonColor = false
+	btn.LayoutOrder = order
+	btn.ZIndex = 4
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 14)
 	
-	local corner = Instance.new("UICorner", container)
-	corner.CornerRadius = UDim.new(0, 14)
-	
-	local stroke = Instance.new("UIStroke", container)
+	local stroke = Instance.new("UIStroke", btn)
 	stroke.Color = COLORS.PRIMARY
 	stroke.Thickness = 1.5
-	stroke.Transparency = 0.7
+	stroke.Transparency = 0.65
 	
-	local iconLabel = Instance.new("TextLabel", container)
+	local iconLabel = Instance.new("TextLabel", btn)
 	iconLabel.Size = UDim2.fromOffset(30, 30)
 	iconLabel.Position = UDim2.fromOffset(10, 10)
 	iconLabel.BackgroundTransparency = 1
 	iconLabel.Text = icon
-	iconLabel.Font = Enum.Font.GothamBold
-	iconLabel.TextSize = 24
-	iconLabel.ZIndex = 4
+	iconLabel.TextSize = 20
+	iconLabel.ZIndex = 5
+	
+	local label = Instance.new("TextLabel", btn)
+	label.Size = UDim2.fromOffset(100, 50)
+	label.Position = UDim2.fromOffset(45, 0)
+	label.BackgroundTransparency = 1
+	label.Text = name
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 13
+	label.TextColor3 = COLORS.TEXT_MUTED
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.ZIndex = 5
+	
+	btn.MouseButton1Click:Connect(function()
+		currentTab = name
+		-- Update all tab buttons
+		for _, child in pairs(tabsContainer:GetChildren()) do
+			if child:IsA("TextButton") then
+				local childStroke = child:FindFirstChildOfClass("UIStroke")
+				local childLabel = child:FindFirstChild("TextLabel")
+				if child == btn then
+					TweenService:Create(child, ANIM.SMOOTH, {BackgroundTransparency = 0.1}):Play()
+					TweenService:Create(childStroke, ANIM.SMOOTH, {Color = COLORS.DANGER, Transparency = 0.3}):Play()
+					for _, lbl in pairs(child:GetChildren()) do
+						if lbl:IsA("TextLabel") then
+							lbl.TextColor3 = COLORS.TEXT
+						end
+					end
+				else
+					TweenService:Create(child, ANIM.SMOOTH, {BackgroundTransparency = 0.3}):Play()
+					TweenService:Create(childStroke, ANIM.SMOOTH, {Color = COLORS.PRIMARY, Transparency = 0.65}):Play()
+					for _, lbl in pairs(child:GetChildren()) do
+						if lbl:IsA("TextLabel") then
+							lbl.TextColor3 = COLORS.TEXT_MUTED
+						end
+					end
+				end
+			end
+		end
+		-- Update content
+		for _, child in pairs(contentContainer:GetChildren()) do
+			if child:IsA("Frame") then
+				child.Visible = (child.Name == name .. "Content")
+			end
+		end
+	end)
+	
+	return btn
+end
+
+-- Create tabs
+local defenseTab = createTabButton("Defense", "🛡️", 1)
+local optionsTab = createTabButton("Options", "⚙️", 2)
+local playersTab = createTabButton("Players", "👥", 3)
+
+-- Set initial tab
+defenseTab.BackgroundTransparency = 0.1
+local defenseTabStroke = defenseTab:FindFirstChildOfClass("UIStroke")
+defenseTabStroke.Color = COLORS.DANGER
+defenseTabStroke.Transparency = 0.3
+for _, lbl in pairs(defenseTab:GetChildren()) do
+	if lbl:IsA("TextLabel") then
+		lbl.TextColor3 = COLORS.TEXT
+	end
+end
+
+-- Helper: Create toggle switch
+local function createToggle(parent, yPos, text, icon, defaultState, callback)
+	local container = Instance.new("Frame", parent)
+	container.Size = UDim2.fromOffset(490, 60)
+	container.Position = UDim2.fromOffset(0, yPos)
+	container.BackgroundColor3 = COLORS.BG_CARD
+	container.BackgroundTransparency = 0.3
+	container.BorderSizePixel = 0
+	container.ZIndex = 4
+	Instance.new("UICorner", container).CornerRadius = UDim.new(0, 14)
+	
+	local stroke = Instance.new("UIStroke", container)
+	stroke.Color = COLORS.PRIMARY
+	stroke.Thickness = 1.5
+	stroke.Transparency = 0.65
+	
+	local iconLabel = Instance.new("TextLabel", container)
+	iconLabel.Size = UDim2.fromOffset(40, 40)
+	iconLabel.Position = UDim2.fromOffset(15, 10)
+	iconLabel.BackgroundTransparency = 1
+	iconLabel.Text = icon
+	iconLabel.TextSize = 28
+	iconLabel.ZIndex = 5
 	
 	local label = Instance.new("TextLabel", container)
-	label.Size = UDim2.fromOffset(128, 32)
-	label.Position = UDim2.fromOffset(10, 44)
+	label.Size = UDim2.fromOffset(340, 60)
+	label.Position = UDim2.fromOffset(65, 0)
 	label.BackgroundTransparency = 1
 	label.Text = text
 	label.Font = Enum.Font.GothamBold
-	label.TextSize = 11
+	label.TextSize = 14
 	label.TextColor3 = COLORS.TEXT
 	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.TextWrapped = true
-	label.ZIndex = 4
+	label.ZIndex = 5
 	
 	local isOn = defaultState
+	
+	-- Toggle switch
+	local toggleBg = Instance.new("Frame", container)
+	toggleBg.Size = UDim2.fromOffset(60, 32)
+	toggleBg.Position = UDim2.fromOffset(415, 14)
+	toggleBg.BackgroundColor3 = isOn and COLORS.SUCCESS or COLORS.TEXT_DARK
+	toggleBg.BackgroundTransparency = 0.3
+	toggleBg.BorderSizePixel = 0
+	toggleBg.ZIndex = 5
+	Instance.new("UICorner", toggleBg).CornerRadius = UDim.new(1, 0)
+	
+	local toggleCircle = Instance.new("Frame", toggleBg)
+	toggleCircle.Size = UDim2.fromOffset(26, 26)
+	toggleCircle.Position = isOn and UDim2.fromOffset(31, 3) or UDim2.fromOffset(3, 3)
+	toggleCircle.BackgroundColor3 = COLORS.TEXT
+	toggleCircle.BorderSizePixel = 0
+	toggleCircle.ZIndex = 6
+	Instance.new("UICorner", toggleCircle).CornerRadius = UDim.new(1, 0)
 	
 	local toggleBtn = Instance.new("TextButton", container)
 	toggleBtn.Size = container.Size
 	toggleBtn.BackgroundTransparency = 1
 	toggleBtn.Text = ""
-	toggleBtn.AutoButtonColor = false
-	toggleBtn.ZIndex = 5
+	toggleBtn.ZIndex = 7
 	
-	local function updateVisual()
-		if isOn then
-			TweenService:Create(container, ANIM.SMOOTH, {BackgroundTransparency = 0.2}):Play()
-			TweenService:Create(stroke, ANIM.SMOOTH, {
-				Color = COLORS.SUCCESS,
-				Transparency = 0.3,
-				Thickness = 2
-			}):Play()
-			iconLabel.TextColor3 = COLORS.SUCCESS
-		else
-			TweenService:Create(container, ANIM.SMOOTH, {BackgroundTransparency = 0.4}):Play()
-			TweenService:Create(stroke, ANIM.SMOOTH, {
-				Color = COLORS.PRIMARY,
-				Transparency = 0.7,
-				Thickness = 1.5
-			}):Play()
-			iconLabel.TextColor3 = COLORS.TEXT_MUTED
-		end
+	local function updateToggle()
+		TweenService:Create(toggleBg, ANIM.SMOOTH, {
+			BackgroundColor3 = isOn and COLORS.SUCCESS or COLORS.TEXT_DARK
+		}):Play()
+		TweenService:Create(toggleCircle, ANIM.BOUNCE, {
+			Position = isOn and UDim2.fromOffset(31, 3) or UDim2.fromOffset(3, 3)
+		}):Play()
+		if callback then callback(isOn) end
 	end
 	
-	local function toggle()
+	toggleBtn.MouseButton1Click:Connect(function()
 		isOn = not isOn
-		updateVisual()
-		return isOn
-	end
-	
-	toggleBtn.MouseEnter:Connect(function()
-		TweenService:Create(container, ANIM.SMOOTH, {
-			BackgroundTransparency = isOn and 0.1 or 0.3
-		}):Play()
+		updateToggle()
 	end)
 	
-	toggleBtn.MouseLeave:Connect(function()
-		TweenService:Create(container, ANIM.SMOOTH, {
-			BackgroundTransparency = isOn and 0.2 or 0.4
-		}):Play()
-	end)
-	
-	toggleBtn.MouseButton1Click:Connect(toggle)
-	
-	updateVisual()
-	
-	return toggleBtn, function() return isOn end, toggle
+	return container, function() return isOn end, function(state) isOn = state updateToggle() end
 end
 
--- Defense toggles
-local defenseToggle, getDefenseState, toggleDefenseState = createCompactToggle(
-	"DEFENSE",
-	"🛡️",
-	false
-)
+-- Helper: Create slider
+local function createSlider(parent, yPos, text, icon, minVal, maxVal, defaultVal, suffix, callback)
+	local container = Instance.new("Frame", parent)
+	container.Size = UDim2.fromOffset(490, 80)
+	container.Position = UDim2.fromOffset(0, yPos)
+	container.BackgroundColor3 = COLORS.BG_CARD
+	container.BackgroundTransparency = 0.3
+	container.BorderSizePixel = 0
+	container.ZIndex = 4
+	Instance.new("UICorner", container).CornerRadius = UDim.new(0, 14)
+	
+	local stroke = Instance.new("UIStroke", container)
+	stroke.Color = COLORS.PRIMARY
+	stroke.Thickness = 1.5
+	stroke.Transparency = 0.65
+	
+	local iconLabel = Instance.new("TextLabel", container)
+	iconLabel.Size = UDim2.fromOffset(40, 40)
+	iconLabel.Position = UDim2.fromOffset(15, 10)
+	iconLabel.BackgroundTransparency = 1
+	iconLabel.Text = icon
+	iconLabel.TextSize = 28
+	iconLabel.ZIndex = 5
+	
+	local label = Instance.new("TextLabel", container)
+	label.Size = UDim2.fromOffset(300, 25)
+	label.Position = UDim2.fromOffset(65, 12)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 14
+	label.TextColor3 = COLORS.TEXT
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.ZIndex = 5
+	
+	local valueLabel = Instance.new("TextLabel", container)
+	valueLabel.Size = UDim2.fromOffset(100, 25)
+	valueLabel.Position = UDim2.fromOffset(375, 12)
+	valueLabel.BackgroundTransparency = 1
+	valueLabel.Text = defaultVal .. suffix
+	valueLabel.Font = Enum.Font.GothamBold
+	valueLabel.TextSize = 14
+	valueLabel.TextColor3 = COLORS.PRIMARY_LIGHT
+	valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+	valueLabel.ZIndex = 5
+	
+	-- Slider track
+	local sliderTrack = Instance.new("Frame", container)
+	sliderTrack.Size = UDim2.fromOffset(400, 6)
+	sliderTrack.Position = UDim2.fromOffset(65, 55)
+	sliderTrack.BackgroundColor3 = COLORS.TEXT_DARK
+	sliderTrack.BackgroundTransparency = 0.5
+	sliderTrack.BorderSizePixel = 0
+	sliderTrack.ZIndex = 5
+	Instance.new("UICorner", sliderTrack).CornerRadius = UDim.new(1, 0)
+	
+	-- Slider fill
+	local sliderFill = Instance.new("Frame", sliderTrack)
+	sliderFill.Size = UDim2.fromScale((defaultVal - minVal) / (maxVal - minVal), 1)
+	sliderFill.BackgroundColor3 = COLORS.PRIMARY_LIGHT
+	sliderFill.BorderSizePixel = 0
+	sliderFill.ZIndex = 6
+	Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(1, 0)
+	
+	-- Slider knob
+	local sliderKnob = Instance.new("Frame", sliderTrack)
+	sliderKnob.Size = UDim2.fromOffset(18, 18)
+	sliderKnob.Position = UDim2.fromScale((defaultVal - minVal) / (maxVal - minVal), 0.5)
+	sliderKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+	sliderKnob.BackgroundColor3 = COLORS.TEXT
+	sliderKnob.BorderSizePixel = 0
+	sliderKnob.ZIndex = 7
+	Instance.new("UICorner", sliderKnob).CornerRadius = UDim.new(1, 0)
+	
+	local currentValue = defaultVal
+	local dragging = false
+	
+	local function updateSlider(input)
+		local relativeX = math.clamp((input.Position.X - sliderTrack.AbsolutePosition.X) / sliderTrack.AbsoluteSize.X, 0, 1)
+		currentValue = math.floor(minVal + (maxVal - minVal) * relativeX)
+		valueLabel.Text = currentValue .. suffix
+		TweenService:Create(sliderFill, ANIM.INSTANT, {Size = UDim2.fromScale(relativeX, 1)}):Play()
+		TweenService:Create(sliderKnob, ANIM.INSTANT, {Position = UDim2.fromScale(relativeX, 0.5)}):Play()
+		if callback then callback(currentValue) end
+	end
+	
+	sliderTrack.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			updateSlider(input)
+		end
+	end)
+	
+	sliderTrack.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+	
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+			updateSlider(input)
+		end
+	end)
+	
+	return container, function() return currentValue end
+end
 
-local notifyToggle, getNotifyState, toggleNotifyState = createCompactToggle(
-	"NOTIFY",
-	"🔔",
-	false
-)
+-- DEFENSE TAB CONTENT
+local defenseContent = Instance.new("Frame", contentContainer)
+defenseContent.Name = "DefenseContent"
+defenseContent.Size = UDim2.fromScale(1, 1)
+defenseContent.BackgroundTransparency = 1
+defenseContent.Visible = true
+defenseContent.ZIndex = 3
 
-local adminToggle, getAdminState, toggleAdminState = createCompactToggle(
-	"ADMIN CMDS",
-	"⚡",
-	false
-)
+local defenseScroll = Instance.new("ScrollingFrame", defenseContent)
+defenseScroll.Size = UDim2.fromScale(1, 1)
+defenseScroll.BackgroundTransparency = 1
+defenseScroll.BorderSizePixel = 0
+defenseScroll.ScrollBarThickness = 6
+defenseScroll.ScrollBarImageColor3 = COLORS.DANGER
+defenseScroll.ScrollBarImageTransparency = 0.3
+defenseScroll.CanvasSize = UDim2.fromOffset(490, 0)
+defenseScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+defenseScroll.ZIndex = 3
 
--- Players Section Header
-local playersHeader = Instance.new("Frame", defensePanel)
-playersHeader.Size = UDim2.fromOffset(450, 38)
-playersHeader.Position = UDim2.fromOffset(15, 262)
-playersHeader.BackgroundColor3 = COLORS.BG_CARD
-playersHeader.BackgroundTransparency = 0.3
-playersHeader.BorderSizePixel = 0
-playersHeader.ZIndex = 3
+local defenseLayout = Instance.new("UIListLayout", defenseScroll)
+defenseLayout.SortOrder = Enum.SortOrder.LayoutOrder
+defenseLayout.Padding = UDim.new(0, 12)
 
-local playersHeaderCorner = Instance.new("UICorner", playersHeader)
-playersHeaderCorner.CornerRadius = UDim.new(0, 12)
-
-local playersHeaderLabel = Instance.new("TextLabel", playersHeader)
-playersHeaderLabel.Size = UDim2.fromOffset(420, 38)
-playersHeaderLabel.Position = UDim2.fromOffset(15, 0)
-playersHeaderLabel.BackgroundTransparency = 1
-playersHeaderLabel.Text = "👥 TRACKED PLAYERS"
-playersHeaderLabel.Font = Enum.Font.GothamBold
-playersHeaderLabel.TextSize = 14
-playersHeaderLabel.TextColor3 = COLORS.TEXT
-playersHeaderLabel.TextXAlignment = Enum.TextXAlignment.Left
-playersHeaderLabel.ZIndex = 4
-
--- Players List
-local playersList = Instance.new("ScrollingFrame", defensePanel)
-playersList.Size = UDim2.fromOffset(450, 360)
-playersList.Position = UDim2.fromOffset(15, 310)
-playersList.BackgroundColor3 = COLORS.BG_CARD
-playersList.BackgroundTransparency = 0.35
-playersList.BorderSizePixel = 0
-playersList.ScrollBarThickness = 6
-playersList.ScrollBarImageColor3 = COLORS.DANGER
-playersList.ScrollBarImageTransparency = 0.3
-playersList.CanvasSize = UDim2.fromOffset(450, 0)
-playersList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-playersList.ZIndex = 3
-
-local playersListCorner = Instance.new("UICorner", playersList)
-playersListCorner.CornerRadius = UDim.new(0, 18)
-
-local playersListStroke = Instance.new("UIStroke", playersList)
-playersListStroke.Color = COLORS.PRIMARY
-playersListStroke.Thickness = 1.5
-playersListStroke.Transparency = 0.6
-
-local playersLayout = Instance.new("UIListLayout", playersList)
-playersLayout.SortOrder = Enum.SortOrder.LayoutOrder
-playersLayout.Padding = UDim.new(0, 10)
-
-local playersPadding = Instance.new("UIPadding", playersList)
-playersPadding.PaddingTop = UDim.new(0, 12)
-playersPadding.PaddingBottom = UDim.new(0, 12)
-playersPadding.PaddingLeft = UDim.new(0, 12)
-playersPadding.PaddingRight = UDim.new(0, 12)
-
--- Helper: Send chat message for admin commands
+-- Helper: Send chat message
 local function sendChatMessage(message)
 	pcall(function()
 		local TextChatService = game:GetService("TextChatService")
@@ -702,27 +649,10 @@ local function sendChatMessage(message)
 			textChannel:SendAsync(message)
 		end
 	end)
-	
-	pcall(function()
-		local ChatService = game:GetService("Chat")
-		if player and player.Character then
-			ChatService:Chat(player.Character, message)
-		end
-	end)
-	
-	pcall(function()
-		local sayMessageRequest = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
-		if sayMessageRequest then
-			local sayMsg = sayMessageRequest:FindFirstChild("SayMessageRequest")
-			if sayMsg then
-				sayMsg:FireServer(message, "All")
-			end
-		end
-	end)
 end
 
 -- Find player base
-local function findPlayerBase()
+function findPlayerBase()
 	local plotsFolder = workspace:FindFirstChild("Plots")
 	if not plotsFolder then return nil end
 	
@@ -747,33 +677,172 @@ local function findPlayerBase()
 	return nil
 end
 
+-- Check if player is in base using ESP-like bounds checking
+local function isPlayerInBase(targetPlayer)
+	if not baseCenter then return false end
+	
+	local char = targetPlayer.Character
+	if not char then return false end
+	
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return false end
+	
+	local distance = (hrp.Position - baseCenter).Magnitude
+	return distance <= Settings.DefenseRange
+end
+
 -- Execute defense on intruder
 local function executeDefenseOnIntruder(intruder)
 	if not intruder or not intruder.Parent then return end
-	if not useAdminCommands then return end
 	
 	-- Cooldown check
-	local cooldownKey = intruder.Name
-	if intruderCooldowns[cooldownKey] and tick() - intruderCooldowns[cooldownKey] < 15 then
+	local cooldownKey = intruder.UserId
+	if intruderCooldowns[cooldownKey] and tick() - intruderCooldowns[cooldownKey] < Settings.CooldownTime then
 		return
 	end
 	intruderCooldowns[cooldownKey] = tick()
 	
 	-- Notification
-	if notifyOnIntruder then
+	if Settings.NotifyOnIntruder then
 		print(string.format("🚨 INTRUDER DETECTED: %s - EXECUTING DEFENSE!", intruder.Name))
 	end
 	
-	-- Execute defense commands
-	for _, cmd in pairs(defenseCommands) do
-		pcall(function()
-			local chatCommand = ";" .. cmd .. " " .. string.lower(intruder.Name)
-			sendChatMessage(chatCommand)
-		end)
-		task.wait(0.2)
+	-- Auto admin panel
+	if Settings.AutoAdminPanel and Settings.UseAdminCommands then
+		for _, cmd in pairs(Settings.AdminCommands) do
+			pcall(function()
+				local chatCommand = ";" .. cmd .. " " .. string.lower(intruder.Name)
+				sendChatMessage(chatCommand)
+			end)
+			task.wait(Settings.CommandDelay)
+		end
+		print(string.format("✅ Defense executed on %s", intruder.Name))
+	end
+end
+
+-- Create ESP box for player
+local function createESPBox(targetPlayer)
+	if playerESP[targetPlayer.UserId] then
+		return playerESP[targetPlayer.UserId]
 	end
 	
-	print(string.format("✅ Defense executed on %s", intruder.Name))
+	local char = targetPlayer.Character
+	if not char then return nil end
+	
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return nil end
+	
+	-- Create ESP box
+	local box = Instance.new("BillboardGui")
+	box.Name = "ESP_" .. targetPlayer.Name
+	box.Adornee = hrp
+	box.Size = UDim2.fromOffset(200, 50)
+	box.StudsOffset = Vector3.new(0, 3, 0)
+	box.AlwaysOnTop = true
+	box.Parent = hrp
+	
+	local frame = Instance.new("Frame", box)
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.BackgroundTransparency = 1
+	
+	-- Box outline
+	local outline = Instance.new("UIStroke", frame)
+	outline.Color = Settings.ESPColor
+	outline.Thickness = Settings.ESPThickness
+	outline.Transparency = 0.3
+	
+	-- Name label
+	local nameLabel = Instance.new("TextLabel", frame)
+	nameLabel.Size = UDim2.fromScale(1, 0.4)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Text = targetPlayer.Name
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.TextSize = 14
+	nameLabel.TextColor3 = COLORS.TEXT
+	nameLabel.TextStrokeTransparency = 0.5
+	nameLabel.Visible = Settings.ShowName
+	
+	-- Distance label
+	local distLabel = Instance.new("TextLabel", frame)
+	distLabel.Size = UDim2.fromScale(1, 0.3)
+	distLabel.Position = UDim2.fromScale(0, 0.4)
+	distLabel.BackgroundTransparency = 1
+	distLabel.Text = "0 studs"
+	distLabel.Font = Enum.Font.Gotham
+	distLabel.TextSize = 12
+	distLabel.TextColor3 = COLORS.SUCCESS
+	distLabel.TextStrokeTransparency = 0.5
+	distLabel.Visible = Settings.ShowDistance
+	
+	-- Status label
+	local statusLabel = Instance.new("TextLabel", frame)
+	statusLabel.Size = UDim2.fromScale(1, 0.3)
+	statusLabel.Position = UDim2.fromScale(0, 0.7)
+	statusLabel.BackgroundTransparency = 1
+	statusLabel.Text = "SAFE"
+	statusLabel.Font = Enum.Font.GothamBold
+	statusLabel.TextSize = 13
+	statusLabel.TextColor3 = COLORS.SUCCESS
+	statusLabel.TextStrokeTransparency = 0.5
+	
+	-- Update ESP in real-time
+	local connection = RunService.Heartbeat:Connect(function()
+		if not targetPlayer or not targetPlayer.Parent or not player.Character then
+			if connection then connection:Disconnect() end
+			if box then box:Destroy() end
+			playerESP[targetPlayer.UserId] = nil
+			return
+		end
+		
+		local myHRP = player.Character:FindFirstChild("HumanoidRootPart")
+		local theirChar = targetPlayer.Character
+		local theirHRP = theirChar and theirChar:FindFirstChild("HumanoidRootPart")
+		
+		if myHRP and theirHRP then
+			local distance = (myHRP.Position - theirHRP.Position).Magnitude
+			distLabel.Text = string.format("%.0f studs", distance)
+			
+			-- Check if in base
+			if isPlayerInBase(targetPlayer) then
+				-- IN BASE - THREAT
+				statusLabel.Text = "IN BASE ⚠️"
+				statusLabel.TextColor3 = COLORS.DANGER
+				outline.Color = COLORS.DANGER
+				distLabel.TextColor3 = COLORS.DANGER
+				
+				-- Auto defense
+				if Settings.DefenseEnabled then
+					task.wait(Settings.DetectionDelay)
+					if isPlayerInBase(targetPlayer) then -- Double check
+						executeDefenseOnIntruder(targetPlayer)
+					end
+				end
+			else
+				-- SAFE
+				statusLabel.Text = "SAFE ✓"
+				statusLabel.TextColor3 = COLORS.SUCCESS
+				outline.Color = Settings.ESPColor
+				
+				if distance < 50 then
+					distLabel.TextColor3 = COLORS.WARNING
+				else
+					distLabel.TextColor3 = COLORS.SUCCESS
+				end
+			end
+		end
+		
+		-- Update visibility based on settings
+		nameLabel.Visible = Settings.ShowName
+		distLabel.Visible = Settings.ShowDistance
+		box.Enabled = Settings.ShowESP
+	end)
+	
+	playerESP[targetPlayer.UserId] = {
+		box = box,
+		connection = connection
+	}
+	
+	return playerESP[targetPlayer.UserId]
 end
 
 -- Create player card
@@ -784,14 +853,12 @@ local function createPlayerCard(targetPlayer)
 	
 	local card = Instance.new("Frame", playersList)
 	card.Name = "PlayerCard_" .. targetPlayer.Name
-	card.Size = UDim2.fromOffset(414, 90)
+	card.Size = UDim2.fromOffset(454, 90)
 	card.BackgroundColor3 = COLORS.BG_GLASS
 	card.BackgroundTransparency = 0.35
 	card.BorderSizePixel = 0
 	card.ZIndex = 4
-	
-	local cardCorner = Instance.new("UICorner", card)
-	cardCorner.CornerRadius = UDim.new(0, 14)
+	Instance.new("UICorner", card).CornerRadius = UDim.new(0, 14)
 	
 	local cardStroke = Instance.new("UIStroke", card)
 	cardStroke.Color = COLORS.PRIMARY
@@ -806,9 +873,7 @@ local function createPlayerCard(targetPlayer)
 	avatar.BorderSizePixel = 0
 	avatar.Image = "rbxthumb://type=AvatarHeadShot&id=" .. targetPlayer.UserId .. "&w=150&h=150"
 	avatar.ZIndex = 5
-	
-	local avatarCorner = Instance.new("UICorner", avatar)
-	avatarCorner.CornerRadius = UDim.new(0, 12)
+	Instance.new("UICorner", avatar).CornerRadius = UDim.new(0, 12)
 	
 	local avatarStroke = Instance.new("UIStroke", avatar)
 	avatarStroke.Color = COLORS.PRIMARY_LIGHT
@@ -817,7 +882,7 @@ local function createPlayerCard(targetPlayer)
 	
 	-- Username
 	local username = Instance.new("TextLabel", card)
-	username.Size = UDim2.fromOffset(220, 22)
+	username.Size = UDim2.fromOffset(240, 22)
 	username.Position = UDim2.fromOffset(90, 12)
 	username.BackgroundTransparency = 1
 	username.Text = targetPlayer.Name
@@ -830,7 +895,7 @@ local function createPlayerCard(targetPlayer)
 	
 	-- Display name
 	local displayName = Instance.new("TextLabel", card)
-	displayName.Size = UDim2.fromOffset(220, 18)
+	displayName.Size = UDim2.fromOffset(240, 18)
 	displayName.Position = UDim2.fromOffset(90, 36)
 	displayName.BackgroundTransparency = 1
 	displayName.Text = "@" .. targetPlayer.DisplayName
@@ -843,7 +908,7 @@ local function createPlayerCard(targetPlayer)
 	
 	-- Distance label
 	local distanceLabel = Instance.new("TextLabel", card)
-	distanceLabel.Size = UDim2.fromOffset(220, 20)
+	distanceLabel.Size = UDim2.fromOffset(240, 20)
 	distanceLabel.Position = UDim2.fromOffset(90, 58)
 	distanceLabel.BackgroundTransparency = 1
 	distanceLabel.Text = "📏 Calculating..."
@@ -856,14 +921,12 @@ local function createPlayerCard(targetPlayer)
 	-- Status indicator
 	local statusIndicator = Instance.new("Frame", card)
 	statusIndicator.Size = UDim2.fromOffset(85, 28)
-	statusIndicator.Position = UDim2.fromOffset(319, 12)
+	statusIndicator.Position = UDim2.fromOffset(359, 12)
 	statusIndicator.BackgroundColor3 = COLORS.SUCCESS
 	statusIndicator.BackgroundTransparency = 0.15
 	statusIndicator.BorderSizePixel = 0
 	statusIndicator.ZIndex = 5
-	
-	local statusCorner = Instance.new("UICorner", statusIndicator)
-	statusCorner.CornerRadius = UDim.new(0, 10)
+	Instance.new("UICorner", statusIndicator).CornerRadius = UDim.new(0, 10)
 	
 	local statusStroke = Instance.new("UIStroke", statusIndicator)
 	statusStroke.Color = COLORS.SUCCESS
@@ -882,7 +945,7 @@ local function createPlayerCard(targetPlayer)
 	-- Attack button
 	local attackBtn = Instance.new("TextButton", card)
 	attackBtn.Size = UDim2.fromOffset(85, 28)
-	attackBtn.Position = UDim2.fromOffset(319, 52)
+	attackBtn.Position = UDim2.fromOffset(359, 52)
 	attackBtn.BackgroundColor3 = COLORS.DANGER
 	attackBtn.BackgroundTransparency = 0.15
 	attackBtn.Text = "DEFEND"
@@ -892,27 +955,15 @@ local function createPlayerCard(targetPlayer)
 	attackBtn.BorderSizePixel = 0
 	attackBtn.AutoButtonColor = false
 	attackBtn.ZIndex = 5
-	
-	local attackCorner = Instance.new("UICorner", attackBtn)
-	attackCorner.CornerRadius = UDim.new(0, 10)
+	Instance.new("UICorner", attackBtn).CornerRadius = UDim.new(0, 10)
 	
 	local attackStroke = Instance.new("UIStroke", attackBtn)
 	attackStroke.Color = COLORS.DANGER
 	attackStroke.Thickness = 1.5
 	attackStroke.Transparency = 0.4
 	
-	attackBtn.MouseEnter:Connect(function()
-		TweenService:Create(attackBtn, ANIM.SMOOTH, {BackgroundTransparency = 0}):Play()
-		TweenService:Create(attackStroke, ANIM.SMOOTH, {Transparency = 0.2}):Play()
-	end)
-	
-	attackBtn.MouseLeave:Connect(function()
-		TweenService:Create(attackBtn, ANIM.SMOOTH, {BackgroundTransparency = 0.15}):Play()
-		TweenService:Create(attackStroke, ANIM.SMOOTH, {Transparency = 0.4}):Play()
-	end)
-	
 	attackBtn.MouseButton1Click:Connect(function()
-		if useAdminCommands then
+		if Settings.UseAdminCommands then
 			attackBtn.Text = "ATTACKING..."
 			executeDefenseOnIntruder(targetPlayer)
 			task.wait(1)
@@ -942,29 +993,20 @@ local function createPlayerCard(targetPlayer)
 			distanceLabel.Text = string.format("📏 %.0f studs", distance)
 			
 			-- Check if in base
-			if baseCenter then
-				local distanceFromBase = (theirHRP.Position - baseCenter).Magnitude
-				
-				if distanceFromBase <= defenseRange then
-					-- IN BASE - THREAT
-					statusText.Text = "IN BASE"
-					TweenService:Create(statusIndicator, ANIM.FAST, {BackgroundColor3 = COLORS.DANGER}):Play()
-					TweenService:Create(statusStroke, ANIM.FAST, {Color = COLORS.DANGER}):Play()
-					TweenService:Create(cardStroke, ANIM.FAST, {Color = COLORS.DANGER, Transparency = 0.4}):Play()
-					TweenService:Create(avatarStroke, ANIM.FAST, {Color = COLORS.DANGER}):Play()
-					
-					-- Auto defense
-					if defenseEnabled then
-						executeDefenseOnIntruder(targetPlayer)
-					end
-				else
-					-- SAFE
-					statusText.Text = "SAFE"
-					TweenService:Create(statusIndicator, ANIM.FAST, {BackgroundColor3 = COLORS.SUCCESS}):Play()
-					TweenService:Create(statusStroke, ANIM.FAST, {Color = COLORS.SUCCESS}):Play()
-					TweenService:Create(cardStroke, ANIM.FAST, {Color = COLORS.PRIMARY, Transparency = 0.65}):Play()
-					TweenService:Create(avatarStroke, ANIM.FAST, {Color = COLORS.PRIMARY_LIGHT}):Play()
-				end
+			if isPlayerInBase(targetPlayer) then
+				-- IN BASE - THREAT
+				statusText.Text = "IN BASE"
+				TweenService:Create(statusIndicator, ANIM.FAST, {BackgroundColor3 = COLORS.DANGER}):Play()
+				TweenService:Create(statusStroke, ANIM.FAST, {Color = COLORS.DANGER}):Play()
+				TweenService:Create(cardStroke, ANIM.FAST, {Color = COLORS.DANGER, Transparency = 0.4}):Play()
+				TweenService:Create(avatarStroke, ANIM.FAST, {Color = COLORS.DANGER}):Play()
+			else
+				-- SAFE
+				statusText.Text = "SAFE"
+				TweenService:Create(statusIndicator, ANIM.FAST, {BackgroundColor3 = COLORS.SUCCESS}):Play()
+				TweenService:Create(statusStroke, ANIM.FAST, {Color = COLORS.SUCCESS}):Play()
+				TweenService:Create(cardStroke, ANIM.FAST, {Color = COLORS.PRIMARY, Transparency = 0.65}):Play()
+				TweenService:Create(avatarStroke, ANIM.FAST, {Color = COLORS.PRIMARY_LIGHT}):Play()
 			end
 			
 			-- Update distance color
@@ -983,34 +1025,193 @@ local function createPlayerCard(targetPlayer)
 		connection = updateConnection
 	}
 	
+	-- Also create ESP for this player
+	createESPBox(targetPlayer)
+	
 	return playerCards[targetPlayer.UserId]
 end
 
--- Update player count
-local function updatePlayerCount()
-	local count = 0
-	for _ in pairs(playerCards) do
-		count = count + 1
-	end
-	playerCountText.Text = count .. " Player" .. (count ~= 1 and "s" or "")
-end
-
--- Add all players
+-- Refresh player list
 local function refreshPlayerList()
 	for _, targetPlayer in pairs(Players:GetPlayers()) do
 		if targetPlayer ~= player then
 			createPlayerCard(targetPlayer)
+			createESPBox(targetPlayer)
 		end
 	end
-	updatePlayerCount()
 end
+
+-- Defense toggles
+local defenseToggle, getDefenseState, setDefenseState = createToggle(
+	defenseScroll, 0, "Enable Auto Defense", "🛡️", false,
+	function(state)
+		Settings.DefenseEnabled = state
+		if state then
+			statusText.Text = "ONLINE"
+			TweenService:Create(statusBadge, ANIM.SMOOTH, {BackgroundColor3 = COLORS.SUCCESS}):Play()
+			TweenService:Create(statusStroke, ANIM.SMOOTH, {Color = COLORS.SUCCESS_GLOW}):Play()
+			print("🛡️ Auto Defense: ONLINE")
+			-- Find base
+			local myBase = findPlayerBase()
+			if myBase then
+				baseCenter = myBase:GetPivot().Position
+				baseBounds = myBase:GetExtentsSize()
+				print("🛡️ Base located at:", baseCenter)
+			else
+				warn("⚠️ Could not find your base!")
+			end
+		else
+			statusText.Text = "OFFLINE"
+			TweenService:Create(statusBadge, ANIM.SMOOTH, {BackgroundColor3 = COLORS.DANGER}):Play()
+			TweenService:Create(statusStroke, ANIM.SMOOTH, {Color = COLORS.DANGER}):Play()
+			print("⛔ Auto Defense: OFFLINE")
+		end
+	end
+)
+
+local autoAdminToggle = createToggle(
+	defenseScroll, 72, "Auto Admin Panel", "⚡", false,
+	function(state)
+		Settings.AutoAdminPanel = state
+		print("⚡ Auto Admin Panel:", state and "ENABLED" or "DISABLED")
+	end
+)
+
+local notifyToggle = createToggle(
+	defenseScroll, 144, "Notify on Intruder", "🔔", false,
+	function(state)
+		Settings.NotifyOnIntruder = state
+		print("🔔 Notifications:", state and "ENABLED" or "DISABLED")
+	end
+)
+
+local espToggle = createToggle(
+	defenseScroll, 216, "Show ESP Boxes", "📦", true,
+	function(state)
+		Settings.ShowESP = state
+		-- Update all ESP
+		for _, espData in pairs(playerESP) do
+			if espData.box then
+				espData.box.Enabled = state
+			end
+		end
+		print("📦 ESP:", state and "ENABLED" or "DISABLED")
+	end
+)
+
+-- OPTIONS TAB CONTENT
+local optionsContent = Instance.new("Frame", contentContainer)
+optionsContent.Name = "OptionsContent"
+optionsContent.Size = UDim2.fromScale(1, 1)
+optionsContent.BackgroundTransparency = 1
+optionsContent.Visible = false
+optionsContent.ZIndex = 3
+
+local optionsScroll = Instance.new("ScrollingFrame", optionsContent)
+optionsScroll.Size = UDim2.fromScale(1, 1)
+optionsScroll.BackgroundTransparency = 1
+optionsScroll.BorderSizePixel = 0
+optionsScroll.ScrollBarThickness = 6
+optionsScroll.ScrollBarImageColor3 = COLORS.PRIMARY
+optionsScroll.ScrollBarImageTransparency = 0.3
+optionsScroll.CanvasSize = UDim2.fromOffset(490, 0)
+optionsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+optionsScroll.ZIndex = 3
+
+local optionsLayout = Instance.new("UIListLayout", optionsScroll)
+optionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+optionsLayout.Padding = UDim.new(0, 12)
+
+-- Options sliders
+createSlider(
+	optionsScroll, 0, "Detection Range", "📏", 20, 200, 50, " studs",
+	function(value)
+		Settings.DefenseRange = value
+	end
+)
+
+createSlider(
+	optionsScroll, 92, "Detection Delay", "⏱️", 0, 5, 0.5, "s",
+	function(value)
+		Settings.DetectionDelay = value
+	end
+)
+
+createSlider(
+	optionsScroll, 184, "Cooldown Time", "⏳", 5, 60, 15, "s",
+	function(value)
+		Settings.CooldownTime = value
+	end
+)
+
+createSlider(
+	optionsScroll, 276, "Command Delay", "⚙️", 0.1, 2, 0.2, "s",
+	function(value)
+		Settings.CommandDelay = value
+	end
+)
+
+-- Admin commands toggle
+local adminCmdsToggle = createToggle(
+	optionsScroll, 368, "Use Admin Commands", "🔧", false,
+	function(state)
+		Settings.UseAdminCommands = state
+		print("🔧 Admin Commands:", state and "ENABLED" or "DISABLED")
+	end
+)
+
+-- ESP options
+local showDistToggle = createToggle(
+	optionsScroll, 440, "Show Distance on ESP", "📍", true,
+	function(state)
+		Settings.ShowDistance = state
+	end
+)
+
+local showNameToggle = createToggle(
+	optionsScroll, 512, "Show Names on ESP", "🏷️", true,
+	function(state)
+		Settings.ShowName = state
+	end
+)
+
+-- PLAYERS TAB CONTENT
+local playersContent = Instance.new("Frame", contentContainer)
+playersContent.Name = "PlayersContent"
+playersContent.Size = UDim2.fromScale(1, 1)
+playersContent.BackgroundTransparency = 1
+playersContent.Visible = false
+playersContent.ZIndex = 3
+
+local playersList = Instance.new("ScrollingFrame", playersContent)
+playersList.Size = UDim2.fromScale(1, 1)
+playersList.BackgroundColor3 = COLORS.BG_CARD
+playersList.BackgroundTransparency = 0.35
+playersList.BorderSizePixel = 0
+playersList.ScrollBarThickness = 6
+playersList.ScrollBarImageColor3 = COLORS.DANGER
+playersList.ScrollBarImageTransparency = 0.3
+playersList.CanvasSize = UDim2.fromOffset(490, 0)
+playersList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+playersList.ZIndex = 3
+Instance.new("UICorner", playersList).CornerRadius = UDim.new(0, 18)
+
+local playersLayout = Instance.new("UIListLayout", playersList)
+playersLayout.SortOrder = Enum.SortOrder.LayoutOrder
+playersLayout.Padding = UDim.new(0, 10)
+
+local playersPadding = Instance.new("UIPadding", playersList)
+playersPadding.PaddingTop = UDim.new(0, 12)
+playersPadding.PaddingBottom = UDim.new(0, 12)
+playersPadding.PaddingLeft = UDim.new(0, 12)
+playersPadding.PaddingRight = UDim.new(0, 12)
 
 -- Player tracking
 Players.PlayerAdded:Connect(function(newPlayer)
 	task.wait(0.5)
-	if newPlayer ~= player then
+	if newPlayer ~= player and newPlayer.Character then
 		createPlayerCard(newPlayer)
-		updatePlayerCount()
+		createESPBox(newPlayer)
 	end
 end)
 
@@ -1024,46 +1225,28 @@ Players.PlayerRemoving:Connect(function(removedPlayer)
 			data.card:Destroy()
 		end
 		playerCards[removedPlayer.UserId] = nil
-		updatePlayerCount()
-	end
-end)
-
--- Defense toggle handlers
-defenseToggle.MouseButton1Click:Connect(function()
-	defenseEnabled = getDefenseState()
-	useAdminCommands = getAdminState()
-	notifyOnIntruder = getNotifyState()
-	
-	-- Find base
-	local myBase = findPlayerBase()
-	if myBase then
-		baseCenter = myBase:GetPivot().Position
-		print("🛡️ Base located at:", baseCenter)
-	else
-		warn("⚠️ Could not find your base! Defense may not work properly.")
 	end
 	
-	if defenseEnabled then
-		statusText.Text = "ONLINE"
-		TweenService:Create(statusBadge, ANIM.SMOOTH, {BackgroundColor3 = COLORS.SUCCESS}):Play()
-		TweenService:Create(statusStroke, ANIM.SMOOTH, {Color = COLORS.SUCCESS_GLOW}):Play()
-		print("🛡️ Auto Defense: ONLINE")
-	else
-		statusText.Text = "OFFLINE"
-		TweenService:Create(statusBadge, ANIM.SMOOTH, {BackgroundColor3 = COLORS.DANGER}):Play()
-		TweenService:Create(statusStroke, ANIM.SMOOTH, {Color = COLORS.DANGER}):Play()
-		print("⛔ Auto Defense: OFFLINE")
+	if playerESP[removedPlayer.UserId] then
+		local espData = playerESP[removedPlayer.UserId]
+		if espData.connection then
+			espData.connection:Disconnect()
+		end
+		if espData.box then
+			espData.box:Destroy()
+		end
+		playerESP[removedPlayer.UserId] = nil
 	end
 end)
 
-adminToggle.MouseButton1Click:Connect(function()
-	useAdminCommands = getAdminState()
-	print("⚡ Admin Commands:", useAdminCommands and "ENABLED" or "DISABLED")
-end)
-
-notifyToggle.MouseButton1Click:Connect(function()
-	notifyOnIntruder = getNotifyState()
-	print("🔔 Notifications:", notifyOnIntruder and "ENABLED" or "DISABLED")
+-- Character added handler for ESP
+Players.PlayerAdded:Connect(function(newPlayer)
+	newPlayer.CharacterAdded:Connect(function()
+		task.wait(0.5)
+		if newPlayer ~= player then
+			createESPBox(newPlayer)
+		end
+	end)
 end)
 
 -- Initialize players
@@ -1075,8 +1258,8 @@ defensePanel.Position = UDim2.new(0.5, 0, 0.5, 0)
 defensePanel.BackgroundTransparency = 1
 
 TweenService:Create(defensePanel, TweenInfo.new(0.8, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-	Size = UDim2.fromOffset(480, 680),
-	Position = UDim2.new(0.5, -240, 0.5, -340),
+	Size = UDim2.fromOffset(520, 720),
+	Position = UDim2.new(0.5, -260, 0.5, -360),
 	BackgroundTransparency = 0.08
 }):Play()
 
@@ -1090,7 +1273,7 @@ for _, child in pairs(defensePanel:GetDescendants()) do
 	end
 end
 
-print("✅ Ducky Auto Defense v2.0 loaded!")
-print("🛡️ Drag the panel anywhere")
+print("✅ Ducky Auto Defense v3.0 loaded!")
+print("🛡️ Features: ESP Detection, Auto Admin Panel, Options Tab")
 print("👥 Tracking", #Players:GetPlayers() - 1, "players")
 print("⚡ Enable defense to protect your base")

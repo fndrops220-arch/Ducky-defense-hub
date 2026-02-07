@@ -1,5 +1,6 @@
--- Ducky Auto Defense v3.0 - ULTRA PREMIUM EDITION
+-- Ducky Auto Defense v3.1 - ULTRA PREMIUM EDITION
 -- Automatic base protection with ESP detection & admin integration
+-- NEW: Stealer Protector & Base Detector with Auto Admin Panel
 -- Created by Ducky Team - discord.gg/duGj8hjB
 
 local Players = game:GetService("Players")
@@ -9,7 +10,7 @@ local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 
-print("🛡️ Ducky Auto Defense v3.0 loading...")
+print("🛡️ Ducky Auto Defense v3.1 loading...")
 
 -- Premium Color Palette
 local COLORS = {
@@ -50,8 +51,10 @@ local ANIM = {
 local Settings = {
 	-- Main toggles
 	DefenseEnabled = false,
-	AutoAdminPanel = false,
-	NotifyOnIntruder = false,
+	StealerProtectorEnabled = false,
+	BaseDetectorEnabled = false,
+	AutoAdminPanel = true,
+	NotifyOnIntruder = true,
 	ShowESP = true,
 	
 	-- Detection settings
@@ -60,7 +63,7 @@ local Settings = {
 	CooldownTime = 15,
 	
 	-- Admin commands
-	UseAdminCommands = false,
+	UseAdminCommands = true,
 	AdminCommands = {"balloon", "ragdoll", "jail", "jumpscare", "inverse"},
 	CommandDelay = 0.2,
 	
@@ -73,11 +76,12 @@ local Settings = {
 
 local detectionConnections = {}
 local intruderCooldowns = {}
+local stealerCooldowns = {}
 local playerCards = {}
 local playerESP = {}
 local baseCenter = nil
 local baseBounds = nil
-local currentTab = "Defense"
+local currentTab = "Main"
 
 -- Create UI
 local gui = Instance.new("ScreenGui")
@@ -249,7 +253,7 @@ local titleLabel = Instance.new("TextLabel", header)
 titleLabel.Size = UDim2.fromOffset(330, 36)
 titleLabel.Position = UDim2.fromOffset(110, 22)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "AUTO DEFENSE v3.0"
+titleLabel.Text = "AUTO DEFENSE v3.1"
 titleLabel.Font = Enum.Font.GothamBold
 titleLabel.TextSize = 24
 titleLabel.TextColor3 = COLORS.TEXT
@@ -260,7 +264,7 @@ local subtitle = Instance.new("TextLabel", header)
 subtitle.Size = UDim2.fromOffset(330, 22)
 subtitle.Position = UDim2.fromOffset(110, 62)
 subtitle.BackgroundTransparency = 1
-subtitle.Text = "ESP Detection & Auto Admin Panel"
+subtitle.Text = "Stealer Protection & Base Detection"
 subtitle.Font = Enum.Font.Gotham
 subtitle.TextSize = 13
 subtitle.TextColor3 = COLORS.TEXT_MUTED
@@ -308,6 +312,8 @@ Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 14)
 
 closeBtn.MouseButton1Click:Connect(function()
 	Settings.DefenseEnabled = false
+	Settings.StealerProtectorEnabled = false
+	Settings.BaseDetectorEnabled = false
 	for _, conn in pairs(detectionConnections) do
 		if conn and typeof(conn) == "RBXScriptConnection" then
 			conn:Disconnect()
@@ -344,7 +350,7 @@ contentContainer.ZIndex = 3
 local function createTabButton(name, icon, order)
 	local btn = Instance.new("TextButton", tabsContainer)
 	btn.Name = name .. "Tab"
-	btn.Size = UDim2.fromOffset(150, 50)
+	btn.Size = UDim2.fromOffset(155, 50)
 	btn.BackgroundColor3 = COLORS.BG_CARD
 	btn.BackgroundTransparency = 0.3
 	btn.BorderSizePixel = 0
@@ -367,7 +373,7 @@ local function createTabButton(name, icon, order)
 	iconLabel.ZIndex = 5
 	
 	local label = Instance.new("TextLabel", btn)
-	label.Size = UDim2.fromOffset(100, 50)
+	label.Size = UDim2.fromOffset(105, 50)
 	label.Position = UDim2.fromOffset(45, 0)
 	label.BackgroundTransparency = 1
 	label.Text = name
@@ -383,7 +389,6 @@ local function createTabButton(name, icon, order)
 		for _, child in pairs(tabsContainer:GetChildren()) do
 			if child:IsA("TextButton") then
 				local childStroke = child:FindFirstChildOfClass("UIStroke")
-				local childLabel = child:FindFirstChild("TextLabel")
 				if child == btn then
 					TweenService:Create(child, ANIM.SMOOTH, {BackgroundTransparency = 0.1}):Play()
 					TweenService:Create(childStroke, ANIM.SMOOTH, {Color = COLORS.DANGER, Transparency = 0.3}):Play()
@@ -405,7 +410,7 @@ local function createTabButton(name, icon, order)
 		end
 		-- Update content
 		for _, child in pairs(contentContainer:GetChildren()) do
-			if child:IsA("Frame") then
+			if child:IsA("Frame") or child:IsA("ScrollingFrame") then
 				child.Visible = (child.Name == name .. "Content")
 			end
 		end
@@ -415,16 +420,16 @@ local function createTabButton(name, icon, order)
 end
 
 -- Create tabs
-local defenseTab = createTabButton("Defense", "🛡️", 1)
+local mainTab = createTabButton("Main", "🛡️", 1)
 local optionsTab = createTabButton("Options", "⚙️", 2)
 local playersTab = createTabButton("Players", "👥", 3)
 
 -- Set initial tab
-defenseTab.BackgroundTransparency = 0.1
-local defenseTabStroke = defenseTab:FindFirstChildOfClass("UIStroke")
-defenseTabStroke.Color = COLORS.DANGER
-defenseTabStroke.Transparency = 0.3
-for _, lbl in pairs(defenseTab:GetChildren()) do
+mainTab.BackgroundTransparency = 0.1
+local mainTabStroke = mainTab:FindFirstChildOfClass("UIStroke")
+mainTabStroke.Color = COLORS.DANGER
+mainTabStroke.Transparency = 0.3
+for _, lbl in pairs(mainTab:GetChildren()) do
 	if lbl:IsA("TextLabel") then
 		lbl.TextColor3 = COLORS.TEXT
 	end
@@ -617,29 +622,6 @@ local function createSlider(parent, yPos, text, icon, minVal, maxVal, defaultVal
 	return container, function() return currentValue end
 end
 
--- DEFENSE TAB CONTENT
-local defenseContent = Instance.new("Frame", contentContainer)
-defenseContent.Name = "DefenseContent"
-defenseContent.Size = UDim2.fromScale(1, 1)
-defenseContent.BackgroundTransparency = 1
-defenseContent.Visible = true
-defenseContent.ZIndex = 3
-
-local defenseScroll = Instance.new("ScrollingFrame", defenseContent)
-defenseScroll.Size = UDim2.fromScale(1, 1)
-defenseScroll.BackgroundTransparency = 1
-defenseScroll.BorderSizePixel = 0
-defenseScroll.ScrollBarThickness = 6
-defenseScroll.ScrollBarImageColor3 = COLORS.DANGER
-defenseScroll.ScrollBarImageTransparency = 0.3
-defenseScroll.CanvasSize = UDim2.fromOffset(490, 0)
-defenseScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-defenseScroll.ZIndex = 3
-
-local defenseLayout = Instance.new("UIListLayout", defenseScroll)
-defenseLayout.SortOrder = Enum.SortOrder.LayoutOrder
-defenseLayout.Padding = UDim.new(0, 12)
-
 -- Helper: Send chat message
 local function sendChatMessage(message)
 	pcall(function()
@@ -677,7 +659,7 @@ function findPlayerBase()
 	return nil
 end
 
--- Check if player is in base using ESP-like bounds checking
+-- Check if player is in base
 local function isPlayerInBase(targetPlayer)
 	if not baseCenter then return false end
 	
@@ -692,19 +674,21 @@ local function isPlayerInBase(targetPlayer)
 end
 
 -- Execute defense on intruder
-local function executeDefenseOnIntruder(intruder)
+local function executeDefenseOnIntruder(intruder, reason)
 	if not intruder or not intruder.Parent then return end
 	
 	-- Cooldown check
 	local cooldownKey = intruder.UserId
-	if intruderCooldowns[cooldownKey] and tick() - intruderCooldowns[cooldownKey] < Settings.CooldownTime then
+	local cooldownTable = reason == "stealer" and stealerCooldowns or intruderCooldowns
+	
+	if cooldownTable[cooldownKey] and tick() - cooldownTable[cooldownKey] < Settings.CooldownTime then
 		return
 	end
-	intruderCooldowns[cooldownKey] = tick()
+	cooldownTable[cooldownKey] = tick()
 	
 	-- Notification
 	if Settings.NotifyOnIntruder then
-		print(string.format("🚨 INTRUDER DETECTED: %s - EXECUTING DEFENSE!", intruder.Name))
+		print(string.format("🚨 %s DETECTED: %s - EXECUTING DEFENSE!", reason:upper(), intruder.Name))
 	end
 	
 	-- Auto admin panel
@@ -716,8 +700,30 @@ local function executeDefenseOnIntruder(intruder)
 			end)
 			task.wait(Settings.CommandDelay)
 		end
-		print(string.format("✅ Defense executed on %s", intruder.Name))
+		print(string.format("✅ Defense executed on %s (%s)", intruder.Name, reason))
 	end
+end
+
+-- Monitor for stealing (placeholder - customize for your game)
+local function monitorStealing(targetPlayer)
+	-- This is a placeholder - implement game-specific stealing detection
+	-- Example: Monitor when players pick up items, check tool ownership, etc.
+	
+	if not Settings.StealerProtectorEnabled then return end
+	
+	local char = targetPlayer.Character
+	if not char then return end
+	
+	-- Example: Detect when someone picks up tools from your base
+	char.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") or child:IsA("Accessory") then
+			if isPlayerInBase(targetPlayer) then
+				-- They picked something up in your base
+				task.wait(0.3) -- Small delay to confirm theft
+				executeDefenseOnIntruder(targetPlayer, "stealer")
+			end
+		end
+	end)
 end
 
 -- Create ESP box for player
@@ -803,7 +809,7 @@ local function createESPBox(targetPlayer)
 			distLabel.Text = string.format("%.0f studs", distance)
 			
 			-- Check if in base
-			if isPlayerInBase(targetPlayer) then
+			if isPlayerInBase(targetPlayer) and Settings.BaseDetectorEnabled then
 				-- IN BASE - THREAT
 				statusLabel.Text = "IN BASE ⚠️"
 				statusLabel.TextColor3 = COLORS.DANGER
@@ -814,7 +820,7 @@ local function createESPBox(targetPlayer)
 				if Settings.DefenseEnabled then
 					task.wait(Settings.DetectionDelay)
 					if isPlayerInBase(targetPlayer) then -- Double check
-						executeDefenseOnIntruder(targetPlayer)
+						executeDefenseOnIntruder(targetPlayer, "intruder")
 					end
 				end
 			else
@@ -836,6 +842,9 @@ local function createESPBox(targetPlayer)
 		distLabel.Visible = Settings.ShowDistance
 		box.Enabled = Settings.ShowESP
 	end)
+	
+	-- Monitor stealing for this player
+	monitorStealing(targetPlayer)
 	
 	playerESP[targetPlayer.UserId] = {
 		box = box,
@@ -965,7 +974,7 @@ local function createPlayerCard(targetPlayer)
 	attackBtn.MouseButton1Click:Connect(function()
 		if Settings.UseAdminCommands then
 			attackBtn.Text = "ATTACKING..."
-			executeDefenseOnIntruder(targetPlayer)
+			executeDefenseOnIntruder(targetPlayer, "manual")
 			task.wait(1)
 			if attackBtn and attackBtn.Parent then
 				attackBtn.Text = "DEFEND"
@@ -993,7 +1002,7 @@ local function createPlayerCard(targetPlayer)
 			distanceLabel.Text = string.format("📏 %.0f studs", distance)
 			
 			-- Check if in base
-			if isPlayerInBase(targetPlayer) then
+			if isPlayerInBase(targetPlayer) and Settings.BaseDetectorEnabled then
 				-- IN BASE - THREAT
 				statusText.Text = "IN BASE"
 				TweenService:Create(statusIndicator, ANIM.FAST, {BackgroundColor3 = COLORS.DANGER}):Play()
@@ -1041,44 +1050,69 @@ local function refreshPlayerList()
 	end
 end
 
--- Defense toggles
-local defenseToggle, getDefenseState, setDefenseState = createToggle(
-	defenseScroll, 0, "Enable Auto Defense", "🛡️", false,
+-- MAIN TAB CONTENT
+local mainContent = Instance.new("ScrollingFrame", contentContainer)
+mainContent.Name = "MainContent"
+mainContent.Size = UDim2.fromScale(1, 1)
+mainContent.BackgroundTransparency = 1
+mainContent.BorderSizePixel = 0
+mainContent.ScrollBarThickness = 6
+mainContent.ScrollBarImageColor3 = COLORS.DANGER
+mainContent.ScrollBarImageTransparency = 0.3
+mainContent.CanvasSize = UDim2.fromOffset(490, 0)
+mainContent.AutomaticCanvasSize = Enum.AutomaticSize.Y
+mainContent.Visible = true
+mainContent.ZIndex = 3
+
+local mainLayout = Instance.new("UIListLayout", mainContent)
+mainLayout.SortOrder = Enum.SortOrder.LayoutOrder
+mainLayout.Padding = UDim.new(0, 12)
+
+-- Main toggles
+local stealerToggle = createToggle(
+	mainContent, 0, "Stealer Protector", "🔒", false,
 	function(state)
-		Settings.DefenseEnabled = state
-		if state then
+		Settings.StealerProtectorEnabled = state
+		print("🔒 Stealer Protector:", state and "ENABLED" or "DISABLED")
+		if state and not Settings.DefenseEnabled then
+			Settings.DefenseEnabled = true
 			statusText.Text = "ONLINE"
 			TweenService:Create(statusBadge, ANIM.SMOOTH, {BackgroundColor3 = COLORS.SUCCESS}):Play()
 			TweenService:Create(statusStroke, ANIM.SMOOTH, {Color = COLORS.SUCCESS_GLOW}):Play()
-			print("🛡️ Auto Defense: ONLINE")
-			-- Find base
+			print("🛡️ Auto Defense: ONLINE (via Stealer Protector)")
+		end
+	end
+)
+
+local baseToggle = createToggle(
+	mainContent, 72, "Base Detector", "🏠", false,
+	function(state)
+		Settings.BaseDetectorEnabled = state
+		print("🏠 Base Detector:", state and "ENABLED" or "DISABLED")
+		if state then
+			-- Find base when enabled
 			local myBase = findPlayerBase()
 			if myBase then
 				baseCenter = myBase:GetPivot().Position
 				baseBounds = myBase:GetExtentsSize()
 				print("🛡️ Base located at:", baseCenter)
+				
+				if not Settings.DefenseEnabled then
+					Settings.DefenseEnabled = true
+					statusText.Text = "ONLINE"
+					TweenService:Create(statusBadge, ANIM.SMOOTH, {BackgroundColor3 = COLORS.SUCCESS}):Play()
+					TweenService:Create(statusStroke, ANIM.SMOOTH, {Color = COLORS.SUCCESS_GLOW}):Play()
+					print("🛡️ Auto Defense: ONLINE (via Base Detector)")
+				end
 			else
-				warn("⚠️ Could not find your base!")
+				warn("⚠️ Could not find your base! Set it manually in Options tab.")
 			end
-		else
-			statusText.Text = "OFFLINE"
-			TweenService:Create(statusBadge, ANIM.SMOOTH, {BackgroundColor3 = COLORS.DANGER}):Play()
-			TweenService:Create(statusStroke, ANIM.SMOOTH, {Color = COLORS.DANGER}):Play()
-			print("⛔ Auto Defense: OFFLINE")
 		end
 	end
 )
 
-local autoAdminToggle = createToggle(
-	defenseScroll, 72, "Auto Admin Panel", "⚡", false,
-	function(state)
-		Settings.AutoAdminPanel = state
-		print("⚡ Auto Admin Panel:", state and "ENABLED" or "DISABLED")
-	end
-)
-
 local notifyToggle = createToggle(
-	defenseScroll, 144, "Notify on Intruder", "🔔", false,
+	mainContent, 144, "Notify on Intruder", "🔔", true,
 	function(state)
 		Settings.NotifyOnIntruder = state
 		print("🔔 Notifications:", state and "ENABLED" or "DISABLED")
@@ -1086,7 +1120,7 @@ local notifyToggle = createToggle(
 )
 
 local espToggle = createToggle(
-	defenseScroll, 216, "Show ESP Boxes", "📦", true,
+	mainContent, 216, "Show ESP Boxes", "📦", true,
 	function(state)
 		Settings.ShowESP = state
 		-- Update all ESP
@@ -1099,53 +1133,108 @@ local espToggle = createToggle(
 	end
 )
 
+-- Info section
+local infoSection = Instance.new("Frame", mainContent)
+infoSection.Size = UDim2.fromOffset(490, 100)
+infoSection.BackgroundColor3 = COLORS.BG_CARD
+infoSection.BackgroundTransparency = 0.3
+infoSection.BorderSizePixel = 0
+infoSection.ZIndex = 4
+Instance.new("UICorner", infoSection).CornerRadius = UDim.new(0, 14)
+
+local infoStroke = Instance.new("UIStroke", infoSection)
+infoStroke.Color = COLORS.PRIMARY
+infoStroke.Thickness = 1.5
+infoStroke.Transparency = 0.65
+
+local infoText = Instance.new("TextLabel", infoSection)
+infoText.Size = UDim2.fromOffset(470, 80)
+infoText.Position = UDim2.fromOffset(10, 10)
+infoText.BackgroundTransparency = 1
+infoText.Text = "🔒 Stealer Protector: Auto admin panels anyone who steals items\n🏠 Base Detector: Auto admin panels players who enter your base\n\nEnable admin commands in Options to activate auto defense!"
+infoText.Font = Enum.Font.Gotham
+infoText.TextSize = 12
+infoText.TextColor3 = COLORS.TEXT_MUTED
+infoText.TextXAlignment = Enum.TextXAlignment.Left
+infoText.TextYAlignment = Enum.TextYAlignment.Top
+infoText.TextWrapped = true
+infoText.ZIndex = 5
+
 -- OPTIONS TAB CONTENT
-local optionsContent = Instance.new("Frame", contentContainer)
+local optionsContent = Instance.new("ScrollingFrame", contentContainer)
 optionsContent.Name = "OptionsContent"
 optionsContent.Size = UDim2.fromScale(1, 1)
 optionsContent.BackgroundTransparency = 1
+optionsContent.BorderSizePixel = 0
+optionsContent.ScrollBarThickness = 6
+optionsContent.ScrollBarImageColor3 = COLORS.PRIMARY
+optionsContent.ScrollBarImageTransparency = 0.3
+optionsContent.CanvasSize = UDim2.fromOffset(490, 0)
+optionsContent.AutomaticCanvasSize = Enum.AutomaticSize.Y
 optionsContent.Visible = false
 optionsContent.ZIndex = 3
 
-local optionsScroll = Instance.new("ScrollingFrame", optionsContent)
-optionsScroll.Size = UDim2.fromScale(1, 1)
-optionsScroll.BackgroundTransparency = 1
-optionsScroll.BorderSizePixel = 0
-optionsScroll.ScrollBarThickness = 6
-optionsScroll.ScrollBarImageColor3 = COLORS.PRIMARY
-optionsScroll.ScrollBarImageTransparency = 0.3
-optionsScroll.CanvasSize = UDim2.fromOffset(490, 0)
-optionsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-optionsScroll.ZIndex = 3
-
-local optionsLayout = Instance.new("UIListLayout", optionsScroll)
+local optionsLayout = Instance.new("UIListLayout", optionsContent)
 optionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 optionsLayout.Padding = UDim.new(0, 12)
 
+-- Set base button
+local setBaseButton = Instance.new("TextButton", optionsContent)
+setBaseButton.Size = UDim2.fromOffset(490, 60)
+setBaseButton.BackgroundColor3 = COLORS.PRIMARY
+setBaseButton.BackgroundTransparency = 0.15
+setBaseButton.Text = "📍 SET BASE TO CURRENT POSITION"
+setBaseButton.Font = Enum.Font.GothamBold
+setBaseButton.TextSize = 14
+setBaseButton.TextColor3 = COLORS.TEXT
+setBaseButton.BorderSizePixel = 0
+setBaseButton.AutoButtonColor = false
+setBaseButton.ZIndex = 4
+Instance.new("UICorner", setBaseButton).CornerRadius = UDim.new(0, 14)
+
+local setBaseStroke = Instance.new("UIStroke", setBaseButton)
+setBaseStroke.Color = COLORS.PRIMARY_LIGHT
+setBaseStroke.Thickness = 1.5
+setBaseStroke.Transparency = 0.4
+
+setBaseButton.MouseButton1Click:Connect(function()
+	if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+		baseCenter = player.Character.HumanoidRootPart.Position
+		setBaseButton.Text = "✅ BASE POSITION SET!"
+		print("📍 Base position set to:", baseCenter)
+		task.wait(2)
+		setBaseButton.Text = "📍 SET BASE TO CURRENT POSITION"
+	else
+		setBaseButton.Text = "❌ FAILED - TRY AGAIN"
+		task.wait(2)
+		setBaseButton.Text = "📍 SET BASE TO CURRENT POSITION"
+	end
+end)
+
 -- Options sliders
 createSlider(
-	optionsScroll, 0, "Detection Range", "📏", 20, 200, 50, " studs",
+	optionsContent, 72, "Detection Range", "📏", 20, 200, 50, " studs",
 	function(value)
 		Settings.DefenseRange = value
 	end
 )
 
 createSlider(
-	optionsScroll, 92, "Detection Delay", "⏱️", 0, 5, 0.5, "s",
+	optionsContent, 164, "Detection Delay", "⏱️", 0, 5, 0.5, "s",
 	function(value)
 		Settings.DetectionDelay = value
 	end
 )
 
 createSlider(
-	optionsScroll, 184, "Cooldown Time", "⏳", 5, 60, 15, "s",
+	optionsContent, 256, "Cooldown Time", "⏳", 5, 60, 15, "s",
 	function(value)
 		Settings.CooldownTime = value
 	end
 )
 
 createSlider(
-	optionsScroll, 276, "Command Delay", "⚙️", 0.1, 2, 0.2, "s",
+	optionsContent, 348, "Command Delay", "⚙️", 0.1, 2, 0.2, "s",
 	function(value)
 		Settings.CommandDelay = value
 	end
@@ -1153,7 +1242,7 @@ createSlider(
 
 -- Admin commands toggle
 local adminCmdsToggle = createToggle(
-	optionsScroll, 368, "Use Admin Commands", "🔧", false,
+	optionsContent, 440, "Use Admin Commands", "🔧", true,
 	function(state)
 		Settings.UseAdminCommands = state
 		print("🔧 Admin Commands:", state and "ENABLED" or "DISABLED")
@@ -1162,14 +1251,14 @@ local adminCmdsToggle = createToggle(
 
 -- ESP options
 local showDistToggle = createToggle(
-	optionsScroll, 440, "Show Distance on ESP", "📍", true,
+	optionsContent, 512, "Show Distance on ESP", "📍", true,
 	function(state)
 		Settings.ShowDistance = state
 	end
 )
 
 local showNameToggle = createToggle(
-	optionsScroll, 512, "Show Names on ESP", "🏷️", true,
+	optionsContent, 584, "Show Names on ESP", "🏷️", true,
 	function(state)
 		Settings.ShowName = state
 	end
@@ -1273,7 +1362,7 @@ for _, child in pairs(defensePanel:GetDescendants()) do
 	end
 end
 
-print("✅ Ducky Auto Defense v3.0 loaded!")
-print("🛡️ Features: ESP Detection, Auto Admin Panel, Options Tab")
+print("✅ Ducky Auto Defense v3.1 loaded!")
+print("🛡️ NEW: Stealer Protector & Base Detector")
 print("👥 Tracking", #Players:GetPlayers() - 1, "players")
-print("⚡ Enable defense to protect your base")
+print("⚡ Enable protection features in Main tab")
